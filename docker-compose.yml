@@ -1,0 +1,116 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: medspaced
+      POSTGRES_PASSWORD: medspaced
+      POSTGRES_DB: medspaced
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medspaced"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      MEDSPACED_ENVIRONMENT: production
+      MEDSPACED_SECRET_KEY: ${MEDSPACED_SECRET_KEY:?MEDSPACED_SECRET_KEY ayarlanmalı}
+      MEDSPACED_DATABASE_URL: postgresql+psycopg://medspaced:medspaced@db:5432/medspaced
+      MEDSPACED_STORAGE_DIR: /app/var/storage
+      MEDSPACED_ALLOWED_ORIGINS: http://localhost:3000
+      MEDSPACED_LLM_PROVIDER: ${MEDSPACED_LLM_PROVIDER:-fake}
+      MEDSPACED_LLM_API_KEY: ${MEDSPACED_LLM_API_KEY:-}
+      MEDSPACED_LLM_BASE_URL: ${MEDSPACED_LLM_BASE_URL:-https://api.openai.com/v1}
+      MEDSPACED_LLM_MODEL: ${MEDSPACED_LLM_MODEL:-gpt-4o-mini}
+      MEDSPACED_LOG_FORMAT: json
+      MEDSPACED_RATE_LIMIT_BACKEND: redis
+      MEDSPACED_REDIS_URL: redis://redis:6379/0
+      MEDSPACED_JOB_QUEUE_BACKEND: celery
+      MEDSPACED_TRUST_PROXY_HEADERS: ${MEDSPACED_TRUST_PROXY_HEADERS:-false}
+      MEDSPACED_TRUSTED_PROXIES: ${MEDSPACED_TRUSTED_PROXIES:-}
+      MEDSPACED_METRICS_TOKEN: ${MEDSPACED_METRICS_TOKEN:-}
+      MEDSPACED_OTEL_ENABLED: ${MEDSPACED_OTEL_ENABLED:-false}
+      MEDSPACED_OTEL_EXPORTER_OTLP_ENDPOINT: ${MEDSPACED_OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      MEDSPACED_OTEL_SERVICE_NAME: ${MEDSPACED_OTEL_SERVICE_NAME:-medspaced-api}
+      MEDSPACED_DB_POOL_SIZE: ${MEDSPACED_DB_POOL_SIZE:-5}
+      MEDSPACED_DB_MAX_OVERFLOW: ${MEDSPACED_DB_MAX_OVERFLOW:-10}
+      MEDSPACED_DB_POOL_TIMEOUT_SECONDS: ${MEDSPACED_DB_POOL_TIMEOUT_SECONDS:-30}
+      MEDSPACED_DB_POOL_RECYCLE_SECONDS: ${MEDSPACED_DB_POOL_RECYCLE_SECONDS:-1800}
+      MEDSPACED_SENTRY_DSN: ${MEDSPACED_SENTRY_DSN:-}
+      MEDSPACED_SENTRY_TRACES_SAMPLE_RATE: ${MEDSPACED_SENTRY_TRACES_SAMPLE_RATE:-0}
+    volumes:
+      - storage_data:/app/var/storage
+    ports:
+      - "8000:8000"
+
+  worker:
+    build: ./backend
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      MEDSPACED_ENVIRONMENT: production
+      MEDSPACED_SECRET_KEY: ${MEDSPACED_SECRET_KEY:?MEDSPACED_SECRET_KEY ayarlanmalı}
+      MEDSPACED_DATABASE_URL: postgresql+psycopg://medspaced:medspaced@db:5432/medspaced
+      MEDSPACED_STORAGE_DIR: /app/var/storage
+      MEDSPACED_REDIS_URL: redis://redis:6379/0
+      MEDSPACED_JOB_QUEUE_BACKEND: celery
+      MEDSPACED_RUN_MIGRATIONS: "false"
+      MEDSPACED_DB_POOL_SIZE: ${MEDSPACED_DB_POOL_SIZE:-5}
+      MEDSPACED_DB_MAX_OVERFLOW: ${MEDSPACED_DB_MAX_OVERFLOW:-10}
+      MEDSPACED_DB_POOL_TIMEOUT_SECONDS: ${MEDSPACED_DB_POOL_TIMEOUT_SECONDS:-30}
+      MEDSPACED_DB_POOL_RECYCLE_SECONDS: ${MEDSPACED_DB_POOL_RECYCLE_SECONDS:-1800}
+      MEDSPACED_SENTRY_DSN: ${MEDSPACED_SENTRY_DSN:-}
+      MEDSPACED_SENTRY_TRACES_SAMPLE_RATE: ${MEDSPACED_SENTRY_TRACES_SAMPLE_RATE:-0}
+      MEDSPACED_LLM_PROVIDER: ${MEDSPACED_LLM_PROVIDER:-fake}
+      MEDSPACED_LLM_API_KEY: ${MEDSPACED_LLM_API_KEY:-}
+      MEDSPACED_LLM_BASE_URL: ${MEDSPACED_LLM_BASE_URL:-https://api.openai.com/v1}
+      MEDSPACED_LLM_MODEL: ${MEDSPACED_LLM_MODEL:-gpt-4o-mini}
+    volumes:
+      - storage_data:/app/var/storage
+    healthcheck:
+      disable: true
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:

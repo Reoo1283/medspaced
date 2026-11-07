@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Veri / depolama
+backend/var/
+var/
+*.db
+*.sqlite3
+.env
+.env.local
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Editör / OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
